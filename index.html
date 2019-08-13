@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Building web-platform-tests.live</title>
+    <meta charset="utf-8">
+    <style>
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle
+
+# Building web-platform-tests.live
+
+2019-08-19
+
+<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" src="./cc-by-sa.png" /></a>
+This presentation is licensed under a
+<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">Creative Commons Attribution-ShareAlike 4.0 International License</a>.
+
+---
+
+- Fault Tolerance
+- Submission Preview
+
+---
+
+## Legacy deployment
+
+    .- w3c-test.org -.
+    |    wptserve    |
+    '----------------'
+
+`+` publicly accessible
+
+`-` regularly offline
+
+`-` recovery required human intervention
+
+`-` TLS certificate maintained manually and at cost
+
+Why?
+
+---
+
+## Fundamentally flawed
+
+`wptserve` is built on Python's `SimpleHTTPServer`
+
+> **Warning:** `SimpleHTTPServer` is not recommended for production. It only
+> implements basic security checks.
+
+https://docs.python.org/2.7/library/simplehttpserver.html
+
+---
+
+## Initial redesign
+
+    .- web-platform-tests.live -.
+    | .------- systemd -------. |
+    | | wptserve      Certbot | |
+    | '-----------------------' |
+    '---------------------------'
+
+`+` Improved uptime thanks to systemd
+
+`+` Free and automated certificate renewal thanks to Let's Encrypt
+
+`-` Still regularly falling offline (just recovering faster)
+
+---
+
+## Second redesign
+
+    .----------------- web-platform-tests.live -------------.
+    | .----- GCP Instance -----. .----- GCP Instance -----. |
+    | | .- Docker container -. | | .- Docker container -. | |
+    | | |      wptserve      | | | |      wptserve      | | |
+    | | '--------------------' | | '--------------------' | |
+    | '------------------------' '------------------------' |
+    |              .----- GCP Instance -----.               |
+    |              | .- Docker container -. |               |
+    |              | |       Certbot      | |               |
+    |              | '--------------------' |               |
+    |              '------------------------'               |
+    '-------------------------------------------------------'
+
+`+` Improved uptime further
+
+`-` Significantly more complex
+
+---
+
+## Distributed certificate management
+
+    *Let's Encrypt*                                         *GitHub*
+          |                                                     |
+    [TLS certificate]                                   [WPT source code]
+          |                                   .------------.    |
+          V                               .-->| wpt server |<---+
+    .--------------.    +++++++++++++++   |   '------------'    |
+    | cert-renewer |--->+ certificate +---+                     |
+    '--------------'    +    store    +   |   .------------.    |
+                        +++++++++++++++   '-->| wpt server |<---'
+                                              '------------'
+    Legend
+                        .---.               +++++
+    *   * external      |   | GCE           +   + object     [   ] message
+          service       '---' instance      +++++ store            contents
+
+---
+
+# Submission Preview
+
+---
+
+## Legacy system
+
+    Contributor           GitHub.com     w3c-test.org        git repository
+        |                     |               |                     |
+        '---[pull request]---.|               |                     |
+                              v               |                     |
+                              '--[web hook]--.|                     |
+                                              v                     |
+                                              '------[git fetch]----.
+                                              .---------------------'
+                                              |                     |
+                                                                    V
+Main problems:
+
+- trust
+- state
+- scalability
+
+???
+
+
+- trust - in order to prevent exploits or denial-of-service attacks, GitHub and
+  w3c-test.org need to share a secret
+- state - the set of currently-deployed pull requests is known only to
+  w3c-test.org; if it goes down, then the operator has to run a fair amount of
+  analysis to determine which pull requests should be mirrored by the
+  replacement
+- scalability - if the reponsibility of running the server is to be shared by
+  multiple machines, then we'd need still more complexity to ensure that each
+  message from GitHub.com is routed to all machines
+
+---
+
+## Redesigned system
+
+    Contributor           GitHub.com    git repository  web-platform-tests.live
+        |                     |               |                     |
+        |                     |               .------[git fetch]----'
+        |                     |               '---------------------.
+        '---[pull request]---.|               |                     |
+                              v               |                     |
+                              '--[git tag]---.|                     |
+                                              v                     |
+                                              |                     |
+                                              .------[git fetch]----'
+                                              '---------------------.
+                                                                    V
+                                     (fetching continues on a regular interval)
+
+    </textarea>
+    <script src="remark.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
