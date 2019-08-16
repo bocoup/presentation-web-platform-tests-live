@@ -4,13 +4,77 @@
     <title>Building web-platform-tests.live</title>
     <meta charset="utf-8">
     <style>
+body {
+  color: #444;
+}
+
+a {
+  color: #777;
+}
+
+.albatross {
+  position: relative;
+  z-index: 0;
+}
+
+.albatross::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+
+  background-image: url(albatross.jpg);
+  background-size: cover;
+  content: '';
+  opacity: 0.3;
+}
+
+.remark-slide-content h1 a {
+  white-space: nowrap;
+}
+
+.remark-slide-content h2 {
+  margin: 0;
+}
+
+.remark-slide-content h3 {
+  margin: 0;
+
+  font-weight: normal;
+  font-size: 1rem;
+}
+
+.remark-slide-content .remark-code {
+  display: block;
+
+  background-color: #eee;
+  text-align: center;
+}
+
+.attribution {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+
+  font-size: 0.8rem;
+}
+
+.remark-slide-scaler {
+  box-shadow: none;
+}
+
+.remark-container {
+  background-color: #fff;
+}
     </style>
   </head>
   <body>
     <textarea id="source">
-class: center, middle
+class: center, middle, albatross
 
-# Building web-platform-tests.live
+# Building <a href="http://web-platform-tests.live">web-platform-tests.live</a>
 
 2019-08-19
 
@@ -20,25 +84,50 @@ class: center, middle
 This presentation is licensed under a
 <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">Creative Commons Attribution-ShareAlike 4.0 International License</a>.
 
+<span class="attribution">
+  <a href="https://www.flickr.com/photos/usfwspacific/5583604752/">
+    Laysan albatross and Midway sunset</a> is licensed <a
+    href="https://creativecommons.org/licenses/by-nc/2.0/">CC BY-NC 2.0</a> by
+  <a href="https://www.flickr.com/photos/usfwspacific/">USFWS - Pacific
+    Region</a>
+</span>
+
 ---
+class: center, middle, albatross
+
+**server layout** / error recovery / submission previews
+
+<span class="attribution">
+  <a href="https://www.flickr.com/photos/usfwspacific/5583604752/">
+    Laysan albatross and Midway sunset</a> is licensed <a
+    href="https://creativecommons.org/licenses/by-nc/2.0/">CC BY-NC 2.0</a> by
+  <a href="https://www.flickr.com/photos/usfwspacific/">USFWS - Pacific
+    Region</a>
+</span>
+
+---
+
+### **server layout** / error recovery / submission previews
 
 ## Legacy deployment
 
-    .- w3c-test.org -.
+    .-- W3C server --.
     |    wptserve    |
     '----------------'
 
 `+` publicly accessible
 
+`-` TLS certificate maintained manually and at cost
+
 `-` regularly offline
 
 `-` recovery required human intervention
 
-`-` TLS certificate maintained manually and at cost
-
 Why?
 
 ---
+
+### **server layout** / error recovery / submission previews
 
 ## Fundamentally flawed
 
@@ -51,36 +140,37 @@ https://docs.python.org/2.7/library/simplehttpserver.html
 
 ---
 
+### **server layout** / error recovery / submission previews
+
 ## Initial redesign
 
-    .- web-platform-tests.live -.
-    | .------- systemd -------. |
-    | | wptserve      Certbot | |
-    | '-----------------------' |
-    '---------------------------'
+    .- Amazon EC2 instance --.
+    |         systemd        |
+    | wptserve       Certbot |
+    '------------------------'
+
+`+` Free and automated certificate renewal thanks to Let's Encrypt (via Certbot)
 
 `+` Improved uptime thanks to systemd
-
-`+` Free and automated certificate renewal thanks to Let's Encrypt
 
 `-` Still regularly falling offline (just recovering faster)
 
 ---
 
+### **server layout** / error recovery / submission previews
+
 ## Second redesign
 
-    .----------------- web-platform-tests.live -------------.
-    | .----- GCP Instance -----. .----- GCP Instance -----. |
-    | | .- Docker container -. | | .- Docker container -. | |
-    | | |      wptserve      | | | |      wptserve      | | |
-    | | '--------------------' | | '--------------------' | |
-    | '------------------------' '------------------------' |
-    |              .----- GCP Instance -----.               |
-    |              | .- Docker container -. |               |
-    |              | |       Certbot      | |               |
-    |              | '--------------------' |               |
-    |              '------------------------'               |
-    '-------------------------------------------------------'
+    .----- GCP instance -----. .----- GCP instance -----.
+    | .- Docker container -. | | .- Docker container -. |
+    | |      wptserve      | | | |      wptserve      | |
+    | '--------------------' | | '--------------------' |
+    '------------------------' '------------------------'
+                 .----- GCP instance -----.              
+                 | .- Docker container -. |              
+                 | |       Certbot      | |              
+                 | '--------------------' |              
+                 '------------------------'              
 
     * GCP - Google Cloud Platform
 
@@ -88,43 +178,205 @@ https://docs.python.org/2.7/library/simplehttpserver.html
 
 `-` Significantly more complex
 
+???
+
+Each container is actually running a number of processes, all managed by the
+supervisord init system. That's typically frowned upon by Docker users, so the
+rationale is included in the project documentation.
+
 ---
+
+### **server layout** / error recovery / submission previews
 
 ## Distributed certificate management
 
-    *Let's Encrypt*                                         *GitHub*
-          |                                                     |
-    [TLS certificate]                                   [WPT source code]
-          |                                   .------------.    |
-          V                               .-->| wpt server |<---+
-    .--------------.    +++++++++++++++   |   '------------'    |
-    | cert-renewer |--->+ certificate +---+                     |
-    '--------------'    +    store    +   |   .------------.    |
-                        +++++++++++++++   '-->| wpt server |<---'
-                                              '------------'
-    Legend
-                        .---.               +++++
-    *   * external      |   | GCE           +   + object     [   ] message
+    *Let's Encrypt*                                         *GitHub*       
+          |                                                     |          
+    [TLS certificate]                                   [WPT source code]  
+          |                                   .------------.    |          
+          V                               .-->| wpt server |<---+          
+    .--------------.    +++++++++++++++   |   '------------'    |          
+    | cert-renewer |--->+ certificate +---+                     |          
+    '--------------'    +    store    +   |   .------------.    |          
+                        +++++++++++++++   '-->| wpt server |<---'          
+                                              '------------'               
+    Legend                                                                 
+                        .---.               +++++                          
+    *   * external      |   | GCE           +   + object     [   ] message 
           service       '---' instance      +++++ store            contents
 
+???
+
+The server is run by multiple Google Compute Engine (or "GCE") instances
+deployed in parallel. Many of the web-platform-tests concern the semantics of
+the HTTP protocol, so load balancing is provided at the TCP level in order to
+avoid interference.
+
+In addition to serving the web-platform-tests, each server performs a few tasks
+on a regular interval. These include:
+
+- fetching the latest revision of the web-platform-tests project from the
+  canonical git repository hosted on GitHub.com
+- fetching TLS certificates from the internally-managed object store
+
+When any of these periodic tasks complete, the web-platform-tests server
+process is restarted in order to apply the changes.
+
+A separate Google Compute Engine instance interfaces with the Let's Encrypt
+service to retrieve TLS certificates for the WPT servers. It integrates with
+Google Cloud Platform's DNS management in order to prove ownership of the
+system's domain name. It stores the certificates in a Google Cloud Platform
+Storage bucket for retrieval by the web-platform-tests servers.
+
+---
+class: center, middle, albatross
+
+server layout / **error recovery** / submission previews
+
+<span class="attribution">
+  <a href="https://www.flickr.com/photos/usfwspacific/5583604752/">
+    Laysan albatross and Midway sunset</a> is licensed <a
+    href="https://creativecommons.org/licenses/by-nc/2.0/">CC BY-NC 2.0</a> by
+  <a href="https://www.flickr.com/photos/usfwspacific/">USFWS - Pacific
+    Region</a>
+</span>
 ---
 
-# Submission Preview
+### server layout / **error recovery** / submission previews
+
+## Layer 1: Process Failure
+
+    container    GCE Instance
+       |             |       
+       x             |       
+                    err!     
+       .---restart---'       
+       |             |       
+       |            okay     
+
+???
+
+If the WPT server fails (as indicated by its process exiting), then Docker as
+running in the Google Compute Engine Instance will automatically restart the
+Docker container.
+
+Restarting the container completely refreshes runtime state, and this is
+expected to resolve many potential problems in the deployment.
 
 ---
+
+### server layout / **error recovery** / submission previews
+
+## Layer 2: Machine failure
+
+    container    GCE Instance    GCE Managed Group
+       |             |                 |          
+       x             x                 |          
+                                      err!        
+                     .-----restart-----'          
+                     |                 |          
+       .---restart---'                 |          
+       |             |                 |          
+       |            okay               |          
+       |             |                 |          
+       |             |                okay        
+
+???
+
+In the case of the web-platform-tests server, an additional layer of error
+recovery is provided via a Google Cloud Platform "health check." If the Google
+Compute Engine instance fails to respond to HTTP requests, then it will be
+destroyed and a new one created in its place. That new instance will
+subsequently create a Docker container to run the WPT server.
+
+This second recovery mechanism guards against more persistent problems, e.g.
+those stemming from state on disk (since even a running GCE instance will fail
+HTTP health checks if restarting the Docker container has no effect).
+
+---
+class: center, middle, albatross
+
+server layout / error recovery / **submission previews**
+
+<span class="attribution">
+  <a href="https://www.flickr.com/photos/usfwspacific/5583604752/">
+    Laysan albatross and Midway sunset</a> is licensed <a
+    href="https://creativecommons.org/licenses/by-nc/2.0/">CC BY-NC 2.0</a> by
+  <a href="https://www.flickr.com/photos/usfwspacific/">USFWS - Pacific
+    Region</a>
+</span>
+
+---
+
+## The feature
+
+    ----------------------------- GitHub ------------------------------
+                    |                              |      |      |     
+                 [master]                      [pr#13451] |      |     
+                    |                              |  [pr#13452] |     
+                    |                              |      |   [ etc. ] 
+                    v                              v      v      v     
+    -------------------------- w3c-test.org ---------------------------
+                    v                              v      v      v     
+    editors, implementors & developers             WPT contributors    
+
+???
+
+w3c-test.org automatically publishes the contents of many patches that are
+submitted to the project through GitHub.
+
+We had to replicate this feature before our system would be considered a viable
+replacement.
+
+It's a fundamentally insecure feature because patches may include arbitrary
+Python code, and we have to run that.
+
+As the canonical location to run the tests on the web, we expect this
+deployment to be referenced from web specifications,
+[wpt.fyi](https://wpt.fyi), and more. We want it to be as stable as possible.
+
+--
+
+&nbsp;
+
+
+    ----------------------------- GitHub ------------------------------
+                    |                              |      |      |     
+                 [master]                      [pr#13451] |      |     
+                    |                              |  [pr#13452] |     
+                    |                              |      |   [ etc. ] 
+                    v                              v      v      v     
+    ---- web-platform-tests.live -----    --- web-platform-tests.pr ---
+                    v                              v      v      v     
+    editors, implementors & developers             WPT contributors    
+
+
+
+???
+
+One of the strongest decisions we made was to deploy it to a separate server.
+Instability resulting from untrusted patches can only annoy people
+contributing; it won't diminish availability for the wider audience.
+
+---
+
+### server layout / error recovery / **submission previews**
 
 ## Legacy system
 
     Contributor           GitHub.com     w3c-test.org        git repository
-        |                     |               |                     |
-        '---[pull request]---.|               |                     |
-                              v               |                     |
-                              '--[web hook]--.|                     |
-                                              v                     |
-                                              '------[git fetch]----.
-                                              .---------------------'
-                                              |                     |
-                                                                    V
+        |                     |               |                     |      
+        '---[pull request]---.|               |                     |      
+                              v               |                     |      
+                              '--[web hook]--.|                     |      
+                                              v                     |      
+                                              '------[git fetch]----.      
+                                              .---------------------'      
+                                              |                     |      
+                                                                    V      
+
+--
+
 Main problems:
 
 - trust
@@ -133,12 +385,11 @@ Main problems:
 
 ???
 
-
 - trust - in order to prevent exploits or denial-of-service attacks, GitHub and
   w3c-test.org need to share a secret
 - state - the set of currently-deployed pull requests is known only to
-  w3c-test.org; if it goes down, then the operator has to run a fair amount of
-  analysis to determine which pull requests should be mirrored by the
+  w3c-test.org; if it goes down, then the operator has to perform a fair amount
+  of analysis to determine which pull requests should be mirrored by the
   replacement
 - scalability - if the reponsibility of running the server is to be shared by
   multiple machines, then we'd need still more complexity to ensure that each
@@ -146,21 +397,72 @@ Main problems:
 
 ---
 
+### server layout / error recovery / **submission previews**
+
 ## Redesigned system
 
     Contributor           GitHub.com    git repository  web-platform-tests.live
-        |                     |               |                     |
-        |                     |               .------[git fetch]----'
-        |                     |               '---------------------.
-        '---[pull request]---.|               |                     |
-                              v               |                     |
-                              '--[git tag]---.|                     |
-                                              v                     |
-                                              |                     |
-                                              .------[git fetch]----'
-                                              '---------------------.
-                                                                    V
+        |                     |              |                     |          
+        |                     |              .------[git fetch]----'          
+        |                     |              '---------------------.          
+        '---[pull request]---.|              |                     |          
+                              v              |                     |          
+                              '--[git tag]--.|                     |          
+                                             v                     |          
+                                             |                     |          
+                                             .------[git fetch]----'          
+                                             '---------------------.          
+                                                                    V          
                                      (fetching continues on a regular interval)
+
+---
+
+### server layout / error recovery / **submission previews**
+
+## A small extension
+
+`wpt-server-submissions.Dockerfile`:
+
+    FROM web-platform-tests-live-wpt-server-tot                    
+
+    COPY src/mirror-pull-requests.sh /usr/local/bin/               
+    COPY src/supervisord-pull-requests.conf /etc/supervisor/conf.d/
+
+`+` Easier to maintain than a standalone implementation
+
+`+` Safer than branching on runtime flags
+
+???
+
+This server could have been built completely standalone from the "tot" or
+("tip-of-tree") server. There would have been a lot of duplication, though, and
+that's hard to maintain.
+
+Alternatively, we could have built a single server that had all functionality,
+and simply disabled the "submission preview" part in the "tot" deployment.
+Runtime flags are too easy to toggle, so this would be susceptible to
+accidental enabling of the "submissions preview" functionality.
+
+Docker and supervisord both offer clean extension mechanisms. That allows us to
+define a distinct image for the submissions server in terms of the "tot" (or
+"tip-of-tree") server.
+
+---
+class: center, middle, albatross
+
+# Thanks!
+
+Source code & documentation:
+
+https://github.com/bocoup/web-platform-tests.live
+
+<span class="attribution">
+  <a href="https://www.flickr.com/photos/usfwspacific/5583604752/">
+    Laysan albatross and Midway sunset</a> is licensed <a
+    href="https://creativecommons.org/licenses/by-nc/2.0/">CC BY-NC 2.0</a> by
+  <a href="https://www.flickr.com/photos/usfwspacific/">USFWS - Pacific
+    Region</a>
+</span>
 
     </textarea>
     <script src="remark.js">
